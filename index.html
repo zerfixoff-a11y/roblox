@@ -1,245 +1,331 @@
-name: Roblox Status Check
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Connexion</title>
+<style>
+  * { box-sizing: border-box; }
 
-# Workflow GitHub Actions tout-en-un :
-# interroge l'API PUBLIQUE de Roblox (utilisateur + jeu), sans mot de passe / connexion réelle.
-#
-# Déclenchement :
-#   - manuel (Actions > Roblox Status Check > Run workflow)
-#   - automatique toutes les heures (cron)
-#   - à chaque push sur main qui touche ce fichier
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f6f8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a1a1a;
+    padding: 24px;
+  }
 
-on:
-  workflow_dispatch:
-    inputs:
-      username:
-        description: "Pseudo Roblox à rechercher (optionnel)"
-        required: false
-      user_id:
-        description: "ID Roblox direct (optionnel)"
-        required: false
-      universe_id:
-        description: "ID de l'univers du jeu Roblox (optionnel)"
-        required: false
-  schedule:
-    - cron: "0 * * * *" # toutes les heures
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/roblox-status.yml"
+  .card {
+    width: 100%;
+    max-width: 380px;
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 36px 32px;
+  }
 
-jobs:
-  check-roblox:
-    runs-on: ubuntu-latest
+  .logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: #2563eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 18px;
+    margin: 0 auto 18px;
+  }
 
-    steps:
-      - name: Installer Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+  h1 {
+    text-align: center;
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 6px;
+  }
 
-      - name: Installer les dépendances
-        run: pip install requests
+  .subtitle {
+    text-align: center;
+    font-size: 14px;
+    color: #6b7280;
+    margin: 0 0 28px;
+  }
 
-      - name: Générer et exécuter le script Roblox
-        env:
-          ROBLOX_USERNAME: ${{ github.event.inputs.username || vars.ROBLOX_USERNAME }}
-          ROBLOX_USER_ID: ${{ github.event.inputs.user_id || vars.ROBLOX_USER_ID }}
-          ROBLOX_UNIVERSE_ID: ${{ github.event.inputs.universe_id || vars.ROBLOX_UNIVERSE_ID }}
-        run: |
-          cat << 'PYEOF' > roblox_check.py
-          #!/usr/bin/env python3
-          """
-          roblox_check.py
-          ----------------
-          Interroge l'API publique de Roblox pour récupérer :
-            - des informations sur un utilisateur (pseudo, ID, statut, description...)
-            - des informations sur un jeu (joueurs actuels, visites, votes...)
+  .field {
+    margin-bottom: 16px;
+  }
 
-          Aucune connexion / authentification n'est nécessaire : ce script utilise
-          uniquement les endpoints PUBLICS de l'API Roblox.
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 6px;
+  }
 
-          Configuration via variables d'environnement :
-            ROBLOX_USERNAME    -> pseudo Roblox à rechercher (optionnel)
-            ROBLOX_USER_ID     -> ID Roblox direct à rechercher (optionnel)
-            ROBLOX_UNIVERSE_ID -> ID de l'univers du jeu à interroger (optionnel)
-          """
+  input[type="text"],
+  input[type="password"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #1a1a1a;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
 
-          import json
-          import os
-          import sys
-          from dataclasses import dataclass, asdict
-          from typing import Optional
+  input[type="text"]:focus,
+  input[type="password"]:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  }
 
-          import requests
+  .password-row {
+    position: relative;
+  }
 
-          USERS_API = "https://users.roblox.com/v1"
-          GAMES_API = "https://games.roblox.com/v1"
-          THUMBNAILS_API = "https://thumbnails.roblox.com/v1"
+  .password-row input {
+    padding-right: 64px;
+  }
 
+  .toggle-vis {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 4px;
+  }
 
-          @dataclass
-          class UserInfo:
-              id: int
-              username: str
-              displayName: str
-              description: Optional[str]
-              created: Optional[str]
-              isBanned: Optional[bool]
-              avatarUrl: Optional[str] = None
+  .toggle-vis:hover {
+    color: #2563eb;
+  }
 
+  .row-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 4px 0 22px;
+    font-size: 13px;
+  }
 
-          @dataclass
-          class GameInfo:
-              universeId: int
-              name: str
-              playing: int
-              visits: int
-              favoritedCount: Optional[int]
-              upVotes: Optional[int] = None
-              downVotes: Optional[int] = None
+  .remember {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #4b5563;
+  }
 
+  .remember input {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+  }
 
-          def get_user_id_from_username(username: str) -> int:
-              """Convertit un pseudo Roblox en ID utilisateur."""
-              url = f"{USERS_API}/usernames/users"
-              payload = {"usernames": [username], "excludeBannedUsers": False}
-              resp = requests.post(url, json=payload, timeout=15)
-              resp.raise_for_status()
-              data = resp.json()
-              results = data.get("data", [])
-              if not results:
-                  raise ValueError(f"Aucun utilisateur trouvé pour le pseudo '{username}'")
-              return results[0]["id"]
+  .forgot {
+    color: #2563eb;
+    text-decoration: none;
+  }
 
+  .forgot:hover {
+    text-decoration: underline;
+  }
 
-          def fetch_user_info(user_id: int) -> UserInfo:
-              """Récupère les infos publiques d'un utilisateur Roblox via son ID."""
-              url = f"{USERS_API}/users/{user_id}"
-              resp = requests.get(url, timeout=15)
-              resp.raise_for_status()
-              data = resp.json()
+  .btn-primary {
+    width: 100%;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 11px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.08s ease;
+  }
 
-              avatar_url = None
-              try:
-                  thumb_resp = requests.get(
-                      f"{THUMBNAILS_API}/users/avatar-headshot",
-                      params={
-                          "userIds": user_id,
-                          "size": "150x150",
-                          "format": "Png",
-                          "isCircular": "false",
-                      },
-                      timeout=15,
-                  )
-                  thumb_resp.raise_for_status()
-                  thumb_data = thumb_resp.json().get("data", [])
-                  if thumb_data:
-                      avatar_url = thumb_data[0].get("imageUrl")
-              except requests.RequestException:
-                  pass
+  .btn-primary:hover {
+    background: #1d4ed8;
+  }
 
-              return UserInfo(
-                  id=data.get("id"),
-                  username=data.get("name"),
-                  displayName=data.get("displayName"),
-                  description=data.get("description"),
-                  created=data.get("created"),
-                  isBanned=data.get("isBanned"),
-                  avatarUrl=avatar_url,
-              )
+  .btn-primary:active {
+    transform: scale(0.99);
+  }
 
+  .btn-primary[disabled] {
+    opacity: 0.6;
+    cursor: progress;
+  }
 
-          def fetch_game_info(universe_id: int) -> GameInfo:
-              """Récupère les infos publiques d'un jeu Roblox via son universeId."""
-              url = f"{GAMES_API}/games"
-              resp = requests.get(url, params={"universeIds": universe_id}, timeout=15)
-              resp.raise_for_status()
-              data = resp.json().get("data", [])
-              if not data:
-                  raise ValueError(f"Aucun jeu trouvé pour l'universeId '{universe_id}'")
-              game = data[0]
+  .feedback {
+    margin-top: 12px;
+    font-size: 13px;
+    min-height: 16px;
+    text-align: center;
+    color: #6b7280;
+  }
 
-              votes = {}
-              try:
-                  votes_resp = requests.get(
-                      f"{GAMES_API}/games/votes", params={"universeIds": universe_id}, timeout=15
-                  )
-                  votes_resp.raise_for_status()
-                  votes_data = votes_resp.json().get("data", [])
-                  if votes_data:
-                      votes = votes_data[0]
-              except requests.RequestException:
-                  pass
+  .feedback.ok { color: #16a34a; }
+  .feedback.err { color: #dc2626; }
 
-              return GameInfo(
-                  universeId=game.get("id"),
-                  name=game.get("name"),
-                  playing=game.get("playing", 0),
-                  visits=game.get("visits", 0),
-                  favoritedCount=game.get("favoritedCount"),
-                  upVotes=votes.get("upVotes"),
-                  downVotes=votes.get("downVotes"),
-              )
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 24px 0 18px;
+    color: #9ca3af;
+    font-size: 12px;
+  }
 
+  .divider::before,
+  .divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #e5e7eb;
+  }
 
-          def main():
-              username = os.environ.get("ROBLOX_USERNAME") or None
-              user_id = os.environ.get("ROBLOX_USER_ID") or None
-              universe_id = os.environ.get("ROBLOX_UNIVERSE_ID") or None
+  .btn-secondary {
+    width: 100%;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    color: #374151;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
 
-              result = {}
-              had_error = False
+  .btn-secondary:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+  }
 
-              if username or user_id:
-                  try:
-                      uid = int(user_id) if user_id else get_user_id_from_username(username)
-                      user_info = fetch_user_info(uid)
-                      result["user"] = asdict(user_info)
-                      print(f"[OK] Utilisateur trouvé : {user_info.username} (ID {user_info.id})")
-                  except Exception as e:
-                      had_error = True
-                      result["user_error"] = str(e)
-                      print(f"[ERREUR] Récupération utilisateur : {e}", file=sys.stderr)
+  .footer-note {
+    text-align: center;
+    margin-top: 22px;
+    font-size: 13px;
+    color: #6b7280;
+  }
 
-              if universe_id:
-                  try:
-                      game_info = fetch_game_info(int(universe_id))
-                      result["game"] = asdict(game_info)
-                      print(f"[OK] Jeu trouvé : {game_info.name} ({game_info.playing} joueurs actuellement)")
-                  except Exception as e:
-                      had_error = True
-                      result["game_error"] = str(e)
-                      print(f"[ERREUR] Récupération jeu : {e}", file=sys.stderr)
+  .footer-note a {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 500;
+  }
 
-              if not username and not user_id and not universe_id:
-                  print(
-                      "Aucun paramètre fourni. Définissez ROBLOX_USERNAME, ROBLOX_USER_ID "
-                      "et/ou ROBLOX_UNIVERSE_ID.",
-                      file=sys.stderr,
-                  )
-                  sys.exit(1)
+  .footer-note a:hover {
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
 
-              with open("roblox_status.json", "w", encoding="utf-8") as f:
-                  json.dump(result, f, ensure_ascii=False, indent=2)
+<div class="card">
+  <h1>Connexion</h1>
+  <p class="subtitle">Entrez vos identifiants pour accéder à votre compte</p>
 
-              print("\nRésultat écrit dans roblox_status.json")
+  <form id="login-form" autocomplete="off">
+    <div class="field">
+      <label for="username">Nom d'utilisateur</label>
+      <input type="text" id="username" name="username" placeholder="votre_pseudo" required />
+    </div>
 
-              if had_error:
-                  sys.exit(1)
+    <div class="field">
+      <label for="password">Mot de passe</label>
+      <div class="password-row">
+        <input type="password" id="password" name="password" placeholder="••••••••" required />
+        <button type="button" class="toggle-vis" id="toggle-vis">Afficher</button>
+      </div>
+    </div>
 
+    <div class="row-between">
+      <label class="remember">
+        <input type="checkbox" id="remember" />
+        Se souvenir de moi
+      </label>
+      <a href="#" class="forgot" id="forgot-link">Mot de passe oublié ?</a>
+    </div>
 
-          if __name__ == "__main__":
-              main()
-          PYEOF
+    <button type="submit" class="btn-primary" id="submit-btn">Se connecter</button>
+    <div class="feedback" id="feedback"></div>
+  </form>
 
-          python roblox_check.py
+  <div class="divider">ou</div>
 
-      - name: Afficher le résultat
-        run: cat roblox_status.json
+  <button type="button" class="btn-secondary" id="create-btn">Créer un compte</button>
 
-      - name: Sauvegarder le résultat comme artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: roblox-status
-          path: roblox_status.json
-          retention-days: 30
+  <p class="footer-note">Pas encore inscrit ? <a href="#" id="signup-link">Rejoindre maintenant</a></p>
+</div>
+
+<script>
+  const form = document.getElementById('login-form');
+  const feedback = document.getElementById('feedback');
+  const submitBtn = document.getElementById('submit-btn');
+  const passwordInput = document.getElementById('password');
+  const toggleVis = document.getElementById('toggle-vis');
+
+  toggleVis.addEventListener('click', () => {
+    const isPwd = passwordInput.type === 'password';
+    passwordInput.type = isPwd ? 'text' : 'password';
+    toggleVis.textContent = isPwd ? 'Masquer' : 'Afficher';
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value.trim();
+
+    if (!username) {
+      feedback.textContent = "Veuillez saisir un nom d'utilisateur";
+      feedback.className = 'feedback err';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Connexion...';
+    feedback.textContent = '';
+    feedback.className = 'feedback';
+
+    // Démo locale uniquement : aucune requête réseau n'est envoyée.
+    setTimeout(() => {
+      feedback.textContent = `Connexion simulée pour "${username}" (démo locale, rien n'est transmis)`;
+      feedback.className = 'feedback ok';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Se connecter';
+    }, 800);
+  });
+
+  document.getElementById('create-btn').addEventListener('click', () => {
+    feedback.textContent = 'Redirection vers la création de compte (non implémentée dans cette démo)';
+    feedback.className = 'feedback';
+  });
+
+  document.getElementById('forgot-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    feedback.textContent = 'Procédure de récupération (non implémentée dans cette démo)';
+    feedback.className = 'feedback';
+  });
+
+  document.getElementById('signup-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    feedback.textContent = "Redirection vers inscription (non implémentée dans cette démo)";
+    feedback.className = 'feedback';
+  });
+</script>
+
+</body>
+</html>
