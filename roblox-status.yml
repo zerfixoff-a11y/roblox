@@ -1,0 +1,245 @@
+name: Roblox Status Check
+
+# Workflow GitHub Actions tout-en-un :
+# interroge l'API PUBLIQUE de Roblox (utilisateur + jeu), sans mot de passe / connexion réelle.
+#
+# Déclenchement :
+#   - manuel (Actions > Roblox Status Check > Run workflow)
+#   - automatique toutes les heures (cron)
+#   - à chaque push sur main qui touche ce fichier
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: "Pseudo Roblox à rechercher (optionnel)"
+        required: false
+      user_id:
+        description: "ID Roblox direct (optionnel)"
+        required: false
+      universe_id:
+        description: "ID de l'univers du jeu Roblox (optionnel)"
+        required: false
+  schedule:
+    - cron: "0 * * * *" # toutes les heures
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/roblox-status.yml"
+
+jobs:
+  check-roblox:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install requests
+
+      - name: Générer et exécuter le script Roblox
+        env:
+          ROBLOX_USERNAME: ${{ github.event.inputs.username || vars.ROBLOX_USERNAME }}
+          ROBLOX_USER_ID: ${{ github.event.inputs.user_id || vars.ROBLOX_USER_ID }}
+          ROBLOX_UNIVERSE_ID: ${{ github.event.inputs.universe_id || vars.ROBLOX_UNIVERSE_ID }}
+        run: |
+          cat << 'PYEOF' > roblox_check.py
+          #!/usr/bin/env python3
+          """
+          roblox_check.py
+          ----------------
+          Interroge l'API publique de Roblox pour récupérer :
+            - des informations sur un utilisateur (pseudo, ID, statut, description...)
+            - des informations sur un jeu (joueurs actuels, visites, votes...)
+
+          Aucune connexion / authentification n'est nécessaire : ce script utilise
+          uniquement les endpoints PUBLICS de l'API Roblox.
+
+          Configuration via variables d'environnement :
+            ROBLOX_USERNAME    -> pseudo Roblox à rechercher (optionnel)
+            ROBLOX_USER_ID     -> ID Roblox direct à rechercher (optionnel)
+            ROBLOX_UNIVERSE_ID -> ID de l'univers du jeu à interroger (optionnel)
+          """
+
+          import json
+          import os
+          import sys
+          from dataclasses import dataclass, asdict
+          from typing import Optional
+
+          import requests
+
+          USERS_API = "https://users.roblox.com/v1"
+          GAMES_API = "https://games.roblox.com/v1"
+          THUMBNAILS_API = "https://thumbnails.roblox.com/v1"
+
+
+          @dataclass
+          class UserInfo:
+              id: int
+              username: str
+              displayName: str
+              description: Optional[str]
+              created: Optional[str]
+              isBanned: Optional[bool]
+              avatarUrl: Optional[str] = None
+
+
+          @dataclass
+          class GameInfo:
+              universeId: int
+              name: str
+              playing: int
+              visits: int
+              favoritedCount: Optional[int]
+              upVotes: Optional[int] = None
+              downVotes: Optional[int] = None
+
+
+          def get_user_id_from_username(username: str) -> int:
+              """Convertit un pseudo Roblox en ID utilisateur."""
+              url = f"{USERS_API}/usernames/users"
+              payload = {"usernames": [username], "excludeBannedUsers": False}
+              resp = requests.post(url, json=payload, timeout=15)
+              resp.raise_for_status()
+              data = resp.json()
+              results = data.get("data", [])
+              if not results:
+                  raise ValueError(f"Aucun utilisateur trouvé pour le pseudo '{username}'")
+              return results[0]["id"]
+
+
+          def fetch_user_info(user_id: int) -> UserInfo:
+              """Récupère les infos publiques d'un utilisateur Roblox via son ID."""
+              url = f"{USERS_API}/users/{user_id}"
+              resp = requests.get(url, timeout=15)
+              resp.raise_for_status()
+              data = resp.json()
+
+              avatar_url = None
+              try:
+                  thumb_resp = requests.get(
+                      f"{THUMBNAILS_API}/users/avatar-headshot",
+                      params={
+                          "userIds": user_id,
+                          "size": "150x150",
+                          "format": "Png",
+                          "isCircular": "false",
+                      },
+                      timeout=15,
+                  )
+                  thumb_resp.raise_for_status()
+                  thumb_data = thumb_resp.json().get("data", [])
+                  if thumb_data:
+                      avatar_url = thumb_data[0].get("imageUrl")
+              except requests.RequestException:
+                  pass
+
+              return UserInfo(
+                  id=data.get("id"),
+                  username=data.get("name"),
+                  displayName=data.get("displayName"),
+                  description=data.get("description"),
+                  created=data.get("created"),
+                  isBanned=data.get("isBanned"),
+                  avatarUrl=avatar_url,
+              )
+
+
+          def fetch_game_info(universe_id: int) -> GameInfo:
+              """Récupère les infos publiques d'un jeu Roblox via son universeId."""
+              url = f"{GAMES_API}/games"
+              resp = requests.get(url, params={"universeIds": universe_id}, timeout=15)
+              resp.raise_for_status()
+              data = resp.json().get("data", [])
+              if not data:
+                  raise ValueError(f"Aucun jeu trouvé pour l'universeId '{universe_id}'")
+              game = data[0]
+
+              votes = {}
+              try:
+                  votes_resp = requests.get(
+                      f"{GAMES_API}/games/votes", params={"universeIds": universe_id}, timeout=15
+                  )
+                  votes_resp.raise_for_status()
+                  votes_data = votes_resp.json().get("data", [])
+                  if votes_data:
+                      votes = votes_data[0]
+              except requests.RequestException:
+                  pass
+
+              return GameInfo(
+                  universeId=game.get("id"),
+                  name=game.get("name"),
+                  playing=game.get("playing", 0),
+                  visits=game.get("visits", 0),
+                  favoritedCount=game.get("favoritedCount"),
+                  upVotes=votes.get("upVotes"),
+                  downVotes=votes.get("downVotes"),
+              )
+
+
+          def main():
+              username = os.environ.get("ROBLOX_USERNAME") or None
+              user_id = os.environ.get("ROBLOX_USER_ID") or None
+              universe_id = os.environ.get("ROBLOX_UNIVERSE_ID") or None
+
+              result = {}
+              had_error = False
+
+              if username or user_id:
+                  try:
+                      uid = int(user_id) if user_id else get_user_id_from_username(username)
+                      user_info = fetch_user_info(uid)
+                      result["user"] = asdict(user_info)
+                      print(f"[OK] Utilisateur trouvé : {user_info.username} (ID {user_info.id})")
+                  except Exception as e:
+                      had_error = True
+                      result["user_error"] = str(e)
+                      print(f"[ERREUR] Récupération utilisateur : {e}", file=sys.stderr)
+
+              if universe_id:
+                  try:
+                      game_info = fetch_game_info(int(universe_id))
+                      result["game"] = asdict(game_info)
+                      print(f"[OK] Jeu trouvé : {game_info.name} ({game_info.playing} joueurs actuellement)")
+                  except Exception as e:
+                      had_error = True
+                      result["game_error"] = str(e)
+                      print(f"[ERREUR] Récupération jeu : {e}", file=sys.stderr)
+
+              if not username and not user_id and not universe_id:
+                  print(
+                      "Aucun paramètre fourni. Définissez ROBLOX_USERNAME, ROBLOX_USER_ID "
+                      "et/ou ROBLOX_UNIVERSE_ID.",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+              with open("roblox_status.json", "w", encoding="utf-8") as f:
+                  json.dump(result, f, ensure_ascii=False, indent=2)
+
+              print("\nRésultat écrit dans roblox_status.json")
+
+              if had_error:
+                  sys.exit(1)
+
+
+          if __name__ == "__main__":
+              main()
+          PYEOF
+
+          python roblox_check.py
+
+      - name: Afficher le résultat
+        run: cat roblox_status.json
+
+      - name: Sauvegarder le résultat comme artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: roblox-status
+          path: roblox_status.json
+          retention-days: 30
